@@ -379,7 +379,6 @@ public class Scheduler {
         final int id;
         final double ops;
         final Integer[] dependencies;
-        final Set<Integer> dependencySet;
 
         int machine;
         int pState;
@@ -390,7 +389,6 @@ public class Scheduler {
             this.id = id;
             this.ops = ops;
             this.dependencies = dependencies;
-            this.dependencySet = new HashSet<>(Arrays.asList(dependencies));
         }
 
         @Override
