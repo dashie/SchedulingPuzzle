@@ -143,7 +143,9 @@ public class Scheduler {
             for (Machine machine : machines) {
                 if (machine != machines[mostLoadedMachine]) {
                     double dt = currentEndTime - machine.endTime;
-                    while (fillMachine(machine, dt, defaultPState)) ; // fill the machine
+                    while (fillMachine(machine, dt, defaultPState)) { // fill the machine
+                        dt = currentEndTime - machine.endTime;
+                    }
                 }
             }
 
@@ -185,6 +187,7 @@ public class Scheduler {
                 // try to reduce pstate
                 while (pstate > 1 && jobTimePerPState[jobId][pstate - 1] <= dt) pstate--;
                 machine.scheduleJob(job, 0, pstate);
+                priorityMatrix.get(0).removeLast();
                 return true;
             }
         }
