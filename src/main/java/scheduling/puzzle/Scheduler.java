@@ -84,16 +84,16 @@ public class Scheduler {
         System.out.printf("ETA:            %f (%f)%n", maxOpsCount / frequencies[defaultPState], deadline);
 
         //
-        MachineSchedule machineSchedule = scheduleJobs(defaultPState);
+        SchedulePlan schedulePlan = scheduleJobs(defaultPState);
         System.out.println();
 
-        for (Machine s : machineSchedule.schedules) {
+        for (Machine s : schedulePlan.schedules) {
             s.dump();
         }
 
         //
         System.out.println();
-        System.out.printf("end time: %f%n", machineSchedule.endTime);
+        System.out.printf("end time: %f%n", schedulePlan.endTime);
     }
 
     /**
@@ -113,7 +113,7 @@ public class Scheduler {
     /**
      *
      */
-    private MachineSchedule scheduleJobs(int defaultPState) {
+    private SchedulePlan scheduleJobs(int defaultPState) {
         // init Machines
         Machine[] machines = new Machine[this.machines];
         for (int i = 0; i < machines.length; ++i) {
@@ -173,7 +173,7 @@ public class Scheduler {
         }
 
         //
-        return new MachineSchedule(machines, machines[mostLoadedMachine].endTime);
+        return new SchedulePlan(machines, machines[mostLoadedMachine].endTime);
     }
 
     /**
@@ -301,12 +301,12 @@ public class Scheduler {
     /**
      *
      */
-    class MachineSchedule {
+    class SchedulePlan {
 
         Machine[] schedules;
         double endTime;
 
-        public MachineSchedule(Machine[] schedules, double endTime) {
+        public SchedulePlan(Machine[] schedules, double endTime) {
             this.schedules = schedules;
             this.endTime = endTime;
         }
