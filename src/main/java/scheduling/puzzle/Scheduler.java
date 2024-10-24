@@ -99,10 +99,10 @@ public class Scheduler {
     /**
      *
      */
-    private int evalPState(double timeOffset, double maxOpsCount) {
+    private int evalPState(double timeOffset, double opsCount) {
         int defaultPState = 0;
         for (int i = 1; i < frequencies.length; ++i) {
-            if (timeOffset + maxOpsCount / frequencies[i] < deadline) {
+            if (timeOffset + opsCount / frequencies[i] < deadline) {
                 defaultPState = i;
                 break;
             }
@@ -121,7 +121,7 @@ public class Scheduler {
         }
 
         //
-        int mostLoadedMachine = 0;
+        int machinePtr = 0;
         for (int p = priorityMatrix.size() - 1; p >= 0; --p) {
 
             List<Integer> list = priorityMatrix.get(p); // jobs are sorted by sizes
@@ -132,18 +132,18 @@ public class Scheduler {
             for (int jobId : list) {
                 while (machines[mi].endTime > machines[nextMachine(mi, 0)].endTime) mi = nextMachine(mi, 0);
                 machines[mi].scheduleJob(jobs[jobId], p, defaultPState);
-                if (machines[mi].endTime > machines[mostLoadedMachine].endTime) mostLoadedMachine = mi;
+                if (machines[mi].endTime > machines[machinePtr].endTime) machinePtr = mi;
                 mi = nextMachine(mi, 0); // rotate bucked
             }
 
             //
-            double currentEndTime = machines[mostLoadedMachine].endTime;
+            double currentEndTime = machines[machinePtr].endTime;
 
             // fill the gaps with items from 0 priority (starting from the end of the queue)
             for (Machine machine : machines) {
-                if (machine != machines[mostLoadedMachine]) {
+                if (machine != machines[machinePtr]) {
                     double dt = currentEndTime - machine.endTime;
-                    while (fillMachine(machine, dt, defaultPState)) { // fill the machine
+                    while (fillMachinePriorityGap(machine, dt, defaultPState)) { // fill the machine
                         dt = currentEndTime - machine.endTime;
                     }
                 }
@@ -173,13 +173,14 @@ public class Scheduler {
         }
 
         //
-        return new SchedulePlan(machines, machines[mostLoadedMachine].endTime);
+        return new SchedulePlan(machines, machines[machinePtr].endTime);
     }
 
     /**
      *
      */
-    private boolean fillMachine(Machine machine, double dt, int pstate) {
+    private boolean fillMachinePriorityGap(Machine machine, double dt, int pstate) {
+
         if (priorityMatrix.get(0).size() > 0) {
             Integer jobId = priorityMatrix.get(0).getLast();
             if (jobTimePerPState[jobId][pstate] <= dt) {
@@ -232,23 +233,32 @@ public class Scheduler {
         // first jobs with dependencies
         Arrays.sort(jobs, (a, b) -> Integer.compare(b.dependencies.length, a.dependencies.length));
 
+        //
+        int[] visitedPriority = new int[jobs.length];
+        int maxPriority = 0;
+        for (Job job : jobs) {
+            // first visit only job with dependencies
+            if (job.dependencies.length > 0) {
+                int p = dfs(job.id, 1, visitedPriority);
+                if (p > maxPriority) {
+                    maxPriority = p;
+                }
+            }
+        }
+        // jobs not visited have priority 0
+
         // prepare priority matrix
         List<List<Integer>> pmx = new ArrayList<>();
-        pmx.add(new ArrayList<>()); // 0 priority list (jobs not related to deps logic)
-
-        //
-        boolean[] visiteds = new boolean[jobs.length];
-        for (Job job : jobs) {
-            if (job.dependencies.length > 0) {
-                dfs(job.id, 1, pmx, visiteds);
-            } else {
-                if (visiteds[job.id]) continue;
-                visiteds[job.id] = true;
-                pmx.get(0).add(job.id);
-            }
+        for (int i = 0; i < maxPriority + 1; ++i) {
+            pmx.add(new ArrayList<>());
+        }
+        for (int i = 0; i < visitedPriority.length; ++i) {
+            pmx.get(visitedPriority[i]).add(i);
         }
 
         // sort priority levels by size
+        // I prefer to schedule the larger job first because it is more easy
+        // to fill the gaps between machines
         pmx.forEach(list -> list.sort((a, b) -> Double.compare(jobs[b].ops, jobs[a].ops)));
 
         return pmx;
@@ -257,22 +267,23 @@ public class Scheduler {
     /**
      *
      */
-    private void dfs(int jobId, int priority, List<List<Integer>> pmx, boolean[] visiteds) {
+    private int dfs(int jobId, int priority, int[] visitedPriority) {
 
-        if (visiteds[jobId]) return;
-        visiteds[jobId] = true;
-
-        // add job to priority queue
-        if (pmx.size() <= priority) {
-            pmx.add(new ArrayList<>());
+        if (visitedPriority[jobId] >= priority) {
+            return priority;
         }
-        List<Integer> priorityList = pmx.get(priority);
-        priorityList.add(jobId);
+        // visit the node, or revisit it and riassign priorities
+        visitedPriority[jobId] = priority;
 
         // dependencies
+        int maxPriority = priority;
         for (int d : jobs[jobId].dependencies) {
-            dfs(d, priority + 1, pmx, visiteds);
+            int p = dfs(d, priority + 1, visitedPriority);
+            if (p > maxPriority) {
+                maxPriority = p;
+            }
         }
+        return maxPriority;
     }
 
     /**

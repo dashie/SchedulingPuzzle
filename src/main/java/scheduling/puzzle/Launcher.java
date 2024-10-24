@@ -18,7 +18,7 @@ import static java.lang.Integer.valueOf;
 public class Launcher {
 
     public static void main(String[] args) throws IOException {
-        new Launcher().run("./samples/in-competition.dat");
+        new Launcher().run("./samples/in.dat");
     }
 
     /**
