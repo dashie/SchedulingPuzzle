@@ -87,13 +87,20 @@ public class Scheduler {
         SchedulePlan schedulePlan = scheduleJobs(defaultPState);
         System.out.println();
 
+        //
+        double totalPowerUsage = Arrays
+            .stream(schedulePlan.schedules)
+            .flatMap(m -> m.schedules.stream())
+            .map(s -> s.powerUsage)
+            .reduce(0.0, (a, b) -> a + b);
+
+        //
         for (Machine s : schedulePlan.schedules) {
             s.dump();
         }
-
-        //
         System.out.println();
-        System.out.printf("end time: %f%n", schedulePlan.endTime);
+        System.out.printf("end time:    %15f (%f)%n", schedulePlan.endTime, deadline);
+        System.out.printf("power usage: %15f%n", totalPowerUsage);
     }
 
     /**
@@ -133,7 +140,7 @@ public class Scheduler {
                 while (machines[mi].endTime > machines[nextMachine(mi, 0)].endTime) mi = nextMachine(mi, 0);
                 machines[mi].scheduleJob(jobs[jobId], p, defaultPState);
                 if (machines[mi].endTime > machines[machinePtr].endTime) machinePtr = mi;
-                mi = nextMachine(mi, 0); // rotate bucked
+                mi = nextMachine(mi, 0); // rotate buckets to fill all uniformly
             }
 
             //
@@ -155,7 +162,7 @@ public class Scheduler {
 
             // align end time on all machine
             for (Machine s : machines) {
-                s.sync(currentEndTime);
+                s.sync(p, currentEndTime);
             }
 
             // re-estimate pstate
@@ -343,24 +350,35 @@ public class Scheduler {
             s.pstate = pstate;
             s.startTime = endTime;
             s.duration = job.ops / frequencies[s.pstate];
+            s.powerUsage = jobJoulePerPState[job.id][pstate];
             schedules.add(s);
             endTime += s.duration;
         }
 
-        void sync(double endTime) {
-            this.endTime = endTime;
+        void sync(int priority, double endTime) {
             Schedule s = new Schedule();
+            // idle to fill the gap
+            s.priority = priority;
             s.startTime = endTime;
+            s.duration = endTime - this.endTime;
+            s.powerUsage = s.duration * powers[0];
             schedules.add(s);
+            this.endTime = endTime;
         }
 
         void dump() {
             System.out.printf("machine %d%n", id);
             for (Schedule s : schedules) {
                 if (s.job == null) { // sync
-                    System.out.printf(" --------------- %12f%n", s.startTime);
+                    if (s.duration > 0) {
+                        System.out.printf(" - idle    %2d p0 %12f %12f %12f%n",
+                            s.priority, s.startTime, s.endTime(), s.powerUsage);
+                    }
+                    System.out.printf(" -------------%2d              %12f%n",
+                        s.priority, s.endTime());
                 } else {
-                    System.out.printf(" - job:%-3d %2d p%d %12f %12f%n", s.job.id, s.priority, s.pstate, s.startTime, s.endTime());
+                    System.out.printf(" - job:%-3d %2d p%d %12f %12f %12f%n",
+                        s.job.id, s.priority, s.pstate, s.startTime, s.endTime(), s.powerUsage);
                 }
             }
         }
@@ -376,6 +394,7 @@ public class Scheduler {
         int pstate;
         double startTime;
         double duration;
+        double powerUsage;
 
         double endTime() {
             return startTime + duration;
@@ -390,11 +409,6 @@ public class Scheduler {
         final int id;
         final double ops;
         final Integer[] dependencies;
-
-        int machine;
-        int pState;
-        double startTime;
-        double completionTime;
 
         public Job(int id, double ops, Integer[] dependencies) {
             this.id = id;
