@@ -56,6 +56,12 @@ public class Scheduler {
                 jobJoulePerPState[j][p] = joules;
             }
         }
+    }
+
+    /**
+     *
+     */
+    public void solve() {
 
         // sort dependencies by number of sub-dependencies
         for (Job job : jobs) {
@@ -67,13 +73,8 @@ public class Scheduler {
         priorityMatrix = evalPriorityMatrix(jd);
         dumpPriorityMatrix(priorityMatrix);
         System.out.println();
-    }
 
-    /**
-     *
-     */
-    public void solve() {
-
+        //
         double maxOpsCount = estimateMaxOpsCount(0, priorityMatrix.size() - 1);
         System.out.printf("max ops count:  %f ops%n", maxOpsCount);
         System.out.printf("deadline:       %f s%n", deadline);
@@ -88,6 +89,16 @@ public class Scheduler {
 
         //
         SchedulePlan schedulePlan = scheduleJobs(defaultPState);
+
+        //
+        dumpResults(schedulePlan, defaultPState);
+    }
+
+
+    /**
+     *
+     */
+    private void dumpResults(SchedulePlan schedulePlan, int defaultPState) {
         System.out.println();
 
         //
@@ -106,21 +117,33 @@ public class Scheduler {
             .reduce(0.0, (a, b) -> a + b);
 
         //
+        double totalMaxPowerTime = Arrays
+            .stream(schedulePlan.schedules)
+            .flatMap(m -> m.schedules.stream())
+            .filter(s -> s.pstate == defaultPState)
+            .map(s -> s.duration)
+            .reduce(0.0, (a, b) -> a + b);
+
+        //
         double totalIdlePower = totalIdle * powers[0];
 
         //
-        double timeWaste = (deadline - schedulePlan.endTime) / deadline * 100;
-        double powerWaste = totalIdlePower / totalPowerUsage * 100;
+        double totalParallelTime = schedulePlan.endTime * machines;
+        double timeNotUsedPerc = (deadline - schedulePlan.endTime) / deadline * 100;
+        double timeIdlePerc = totalIdle / totalParallelTime * 100;
+        double timeMaxPowerPerc = totalMaxPowerTime / totalParallelTime * 100;
+        double powerWorkingPerc = (totalPowerUsage - totalIdlePower) / totalPowerUsage * 100;
 
         //
         for (Machine s : schedulePlan.schedules) {
             s.dump();
         }
         System.out.println();
-        System.out.printf("deadline:    %15f%n", deadline);
-        System.out.printf("end time:    %15f %13f %%%n", schedulePlan.endTime, timeWaste);
-        System.out.printf("idle time:   %15f%n", totalIdle);
-        System.out.printf("power usage: %15f %13f %%%n", totalPowerUsage, powerWaste);
+        System.out.printf("deadline:       %15f%n", deadline);
+        System.out.printf("end time:       %15f %13f %%%n", schedulePlan.endTime, timeNotUsedPerc);
+        System.out.printf("idle time:      %15f %13f %% (p0)%n", totalIdle, timeIdlePerc);
+        System.out.printf("max power time: %15f %13f %% (p%d)%n", totalMaxPowerTime, timeMaxPowerPerc, defaultPState);
+        System.out.printf("power usage:    %15f %13f %%%n", totalPowerUsage, powerWorkingPerc);
     }
 
     /**
