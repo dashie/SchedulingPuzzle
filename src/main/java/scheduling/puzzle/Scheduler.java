@@ -119,8 +119,8 @@ public class Scheduler {
         System.out.println();
         System.out.printf("deadline:    %15f%n", deadline);
         System.out.printf("end time:    %15f %13f %%%n", schedulePlan.endTime, timeWaste);
-        System.out.printf("power usage: %15f %13f %%%n", totalPowerUsage, powerWaste);
         System.out.printf("idle time:   %15f%n", totalIdle);
+        System.out.printf("power usage: %15f %13f %%%n", totalPowerUsage, powerWaste);
     }
 
     /**
