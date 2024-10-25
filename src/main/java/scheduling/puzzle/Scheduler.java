@@ -82,6 +82,9 @@ public class Scheduler {
         if (defaultPState == 0) throw new IllegalStateException();
         System.out.printf("default pstate: %d%n", defaultPState);
         System.out.printf("ETA:            %f (%f)%n", maxOpsCount / frequencies[defaultPState], deadline);
+        if (defaultPState > 1) {
+            System.out.printf("ETA pstate-1:   %f%n", maxOpsCount / frequencies[defaultPState - 1]);
+        }
 
         //
         SchedulePlan schedulePlan = scheduleJobs(defaultPState);
@@ -95,12 +98,29 @@ public class Scheduler {
             .reduce(0.0, (a, b) -> a + b);
 
         //
+        double totalIdle = Arrays
+            .stream(schedulePlan.schedules)
+            .flatMap(m -> m.schedules.stream())
+            .filter(s -> s.job == null)
+            .map(s -> s.duration)
+            .reduce(0.0, (a, b) -> a + b);
+
+        //
+        double totalIdlePower = totalIdle * powers[0];
+
+        //
+        double timeWaste = (deadline - schedulePlan.endTime) / deadline * 100;
+        double powerWaste = totalIdlePower / totalPowerUsage * 100;
+
+        //
         for (Machine s : schedulePlan.schedules) {
             s.dump();
         }
         System.out.println();
-        System.out.printf("end time:    %15f (%f)%n", schedulePlan.endTime, deadline);
-        System.out.printf("power usage: %15f%n", totalPowerUsage);
+        System.out.printf("deadline:    %15f%n", deadline);
+        System.out.printf("end time:    %15f %13f %%%n", schedulePlan.endTime, timeWaste);
+        System.out.printf("power usage: %15f %13f %%%n", totalPowerUsage, powerWaste);
+        System.out.printf("idle time:   %15f%n", totalIdle);
     }
 
     /**
@@ -128,7 +148,9 @@ public class Scheduler {
         }
 
         //
-        int machinePtr = 0;
+        int machineEndingLast = 0;
+        double currentEndTime = 0;
+
         for (int p = priorityMatrix.size() - 1; p >= 0; --p) {
 
             List<Integer> list = priorityMatrix.get(p); // jobs are sorted by sizes
@@ -137,18 +159,21 @@ public class Scheduler {
             // organize all level jobs per machine assigning the new one to the most free machine
             int mi = 0;
             for (int jobId : list) {
+                //
                 while (machines[mi].endTime > machines[nextMachine(mi, 0)].endTime) mi = nextMachine(mi, 0);
                 machines[mi].scheduleJob(jobs[jobId], p, defaultPState);
-                if (machines[mi].endTime > machines[machinePtr].endTime) machinePtr = mi;
+                if (machines[mi].endTime > machines[machineEndingLast].endTime) machineEndingLast = mi;
                 mi = nextMachine(mi, 0); // rotate buckets to fill all uniformly
+
+                //
+                currentEndTime = machines[machineEndingLast].endTime;
             }
 
             //
-            double currentEndTime = machines[machinePtr].endTime;
 
             // fill the gaps with items from 0 priority (starting from the end of the queue)
             for (Machine machine : machines) {
-                if (machine != machines[machinePtr]) {
+                if (machine != machines[machineEndingLast]) {
                     double dt = currentEndTime - machine.endTime;
                     while (fillMachinePriorityGap(machine, dt, defaultPState)) { // fill the machine
                         dt = currentEndTime - machine.endTime;
@@ -180,7 +205,7 @@ public class Scheduler {
         }
 
         //
-        return new SchedulePlan(machines, machines[machinePtr].endTime);
+        return new SchedulePlan(machines, currentEndTime);
     }
 
     /**
@@ -205,32 +230,34 @@ public class Scheduler {
     /**
      *
      */
-    private int nextMachine(int i, int sign) {
-        // TODO Oscillate from left to right and then from right to left in the future
-        return (i + 1) % this.machines;
+    private double estimateMaxOpsCount(double timeOffset, int priority) {
+
+        double worstSize = timeOffset;
+        for (int p = priority; p >= 0; --p) {
+            Iterator<Integer> it = priorityMatrix.get(p).iterator(); // jobs are sorted by sizes
+
+            // organize all level jobs per machine assigning the new one to the most free machine
+            int worstBucket = 0;
+            double[] cpuBucket = new double[machines];
+            int bi = 0;
+            while (it.hasNext()) {
+                int jobId = it.next();
+                while (cpuBucket[bi] > cpuBucket[nextMachine(bi, 0)]) bi = nextMachine(bi, 0);
+                cpuBucket[bi] += jobs[jobId].ops;
+                if (cpuBucket[bi] > cpuBucket[worstBucket]) worstBucket = bi;
+                bi = nextMachine(bi, 0); // rotate bucked
+            }
+            worstSize += cpuBucket[worstBucket];
+        }
+        return worstSize;
     }
 
     /**
      *
      */
-    private double estimateMaxOpsCount(double timeOffset, int priority) {
-
-        double worstSize = timeOffset;
-        for (int p = priority; p >= 0; --p) {
-            List<Integer> list = priorityMatrix.get(p); // jobs are sorted by sizes
-            // organize all level jobs per machine assigning the new one to the most free machine
-            int worstBucket = 0;
-            double[] cpuBucket = new double[machines];
-            int bi = 0;
-            for (int jobId : list) {
-                while (cpuBucket[bi] > cpuBucket[(bi + 1) % machines]) bi = (bi + 1) % machines;
-                cpuBucket[bi] += jobs[jobId].ops;
-                if (cpuBucket[bi] > cpuBucket[worstBucket]) worstBucket = bi;
-                bi = (bi + 1) % machines; // rotate bucked
-            }
-            worstSize += cpuBucket[worstBucket];
-        }
-        return worstSize;
+    private int nextMachine(int i, int sign) {
+        // TODO Oscillate from left to right and then from right to left in the future
+        return (i + 1) % this.machines;
     }
 
     /**
@@ -371,14 +398,11 @@ public class Scheduler {
             for (Schedule s : schedules) {
                 if (s.job == null) { // sync
                     if (s.duration > 0) {
-                        System.out.printf(" - idle    %2d p0 %12f %12f %12f%n",
-                            s.priority, s.startTime, s.endTime(), s.powerUsage);
+                        System.out.printf(" - idle    %2d p0 %12f %12f %12f%n", s.priority, s.startTime, s.endTime(), s.powerUsage);
                     }
-                    System.out.printf(" -------------%2d              %12f%n",
-                        s.priority, s.endTime());
+                    System.out.printf(" -------------%2d              %12f%n", s.priority, s.endTime());
                 } else {
-                    System.out.printf(" - job:%-3d %2d p%d %12f %12f %12f%n",
-                        s.job.id, s.priority, s.pstate, s.startTime, s.endTime(), s.powerUsage);
+                    System.out.printf(" - job:%-3d %2d p%d %12f %12f %12f%n", s.job.id, s.priority, s.pstate, s.startTime, s.endTime(), s.powerUsage);
                 }
             }
         }
