@@ -24,7 +24,7 @@ public class Launcher {
     /**
      *
      */
-    private List<Scheduler> schedulers = new ArrayList<>();
+    private List<PriorityMatrixScheduler> schedulers = new ArrayList<>();
 
     /**
      *
@@ -57,19 +57,19 @@ public class Launcher {
                 int pStates = parseInt(reader.readLine());
                 double[] frequencies = parseArrayOfDouble(reader.readLine());
                 double[] powers = parseArrayOfDouble(reader.readLine());
-                Scheduler.Job[] jobs = new Scheduler.Job[numberOfJobs];
+                Job[] jobs = new Job[numberOfJobs];
                 for (int i = 0; i < numberOfJobs; ++i) {
                     Integer[] predecessors = parseArrayOfInt(reader.readLine(), -1);
                     if (predecessors.length == 1 && predecessors[0] == -1) {
-                        jobs[i] = new Scheduler.Job(i, jobOps[i], new Integer[0]);
+                        jobs[i] = new Job(i, jobOps[i], new Integer[0]);
                     } else {
-                        jobs[i] = new Scheduler.Job(i, jobOps[i], predecessors);
+                        jobs[i] = new Job(i, jobOps[i], predecessors);
                     }
                 }
                 double deadline = parseDouble(reader.readLine());
 
                 //
-                Scheduler s = new Scheduler(
+                PriorityMatrixScheduler s = new PriorityMatrixScheduler(
                     numberOfJobs,
                     machines,
                     pStates,

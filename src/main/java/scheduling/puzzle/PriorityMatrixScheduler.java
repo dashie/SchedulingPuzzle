@@ -6,14 +6,14 @@ import java.util.*;
 /**
  *
  */
-public class Scheduler {
+public class PriorityMatrixScheduler {
 
     private final int numberOfJobs;
     private final int machines;
     private final int pStates;
     private final double[] frequencies;
     private final double[] powers;
-    private final Job[] jobs;
+    private final Job[] jobsMap;
     private final double deadline;
 
     private double[][] jobTimePerPState;
@@ -23,14 +23,14 @@ public class Scheduler {
     /**
      *
      */
-    public Scheduler(int numberOfJobs, int machines, int pStates, double[] frequencies, double[] powers, Job[] jobs, double deadline) {
+    public PriorityMatrixScheduler(int numberOfJobs, int machines, int pStates, double[] frequencies, double[] powers, Job[] jobs, double deadline) {
 
         this.numberOfJobs = numberOfJobs;
         this.machines = machines;
         this.pStates = pStates;
         this.frequencies = frequencies;
         this.powers = powers;
-        this.jobs = jobs;
+        this.jobsMap = jobs;
         this.deadline = deadline;
     }
 
@@ -48,7 +48,7 @@ public class Scheduler {
         jobTimePerPState = new double[numberOfJobs][pStates];
         jobJoulePerPState = new double[numberOfJobs][pStates];
         for (int j = 0; j < numberOfJobs; ++j) {
-            double ops = jobs[j].ops;
+            double ops = jobsMap[j].ops;
             for (int p = 0; p < frequencies.length; ++p) {
                 double time = ops / frequencies[p]; // in secondds
                 double joules = powers[p] * time;
@@ -63,14 +63,8 @@ public class Scheduler {
      */
     public void solve() {
 
-        // sort dependencies by number of sub-dependencies
-        for (Job job : jobs) {
-            Arrays.sort(job.dependencies, (a, b) -> Integer.compare(jobs[b].dependencies.length, jobs[a].dependencies.length));
-        }
-
         // priority matrix
-        Job[] jd = Arrays.copyOf(jobs, jobs.length); // create a copy before to sort it
-        priorityMatrix = evalPriorityMatrix(jd);
+        priorityMatrix = evalPriorityMatrix();
         dumpPriorityMatrix(priorityMatrix);
         System.out.println();
 
@@ -184,7 +178,7 @@ public class Scheduler {
             for (int jobId : list) {
                 //
                 while (machines[mi].endTime > machines[nextMachine(mi, 0)].endTime) mi = nextMachine(mi, 0);
-                machines[mi].scheduleJob(jobs[jobId], p, defaultPState);
+                machines[mi].scheduleJob(jobsMap[jobId], p, defaultPState);
                 if (machines[mi].endTime > machines[machineEndingLast].endTime) machineEndingLast = mi;
                 mi = nextMachine(mi, 0); // rotate buckets to fill all uniformly
 
@@ -239,7 +233,7 @@ public class Scheduler {
         if (priorityMatrix.get(0).size() > 0) {
             Integer jobId = priorityMatrix.get(0).getLast();
             if (jobTimePerPState[jobId][pstate] <= dt) {
-                Job job = jobs[jobId];
+                Job job = jobsMap[jobId];
                 // try to reduce pstate
                 while (pstate > 1 && jobTimePerPState[jobId][pstate - 1] <= dt) pstate--;
                 machine.scheduleJob(job, 0, pstate);
@@ -266,7 +260,7 @@ public class Scheduler {
             while (it.hasNext()) {
                 int jobId = it.next();
                 while (cpuBucket[bi] > cpuBucket[nextMachine(bi, 0)]) bi = nextMachine(bi, 0);
-                cpuBucket[bi] += jobs[jobId].ops;
+                cpuBucket[bi] += jobsMap[jobId].ops;
                 if (cpuBucket[bi] > cpuBucket[worstBucket]) worstBucket = bi;
                 bi = nextMachine(bi, 0); // rotate bucked
             }
@@ -286,8 +280,10 @@ public class Scheduler {
     /**
      *
      */
-    private List<List<Integer>> evalPriorityMatrix(Job[] jobs) {
-        // first jobs with dependencies
+    private List<List<Integer>> evalPriorityMatrix() {
+        // create a copy before to sort it
+        Job[] jobs = Arrays.copyOf(jobsMap, jobsMap.length);
+        // sort jobs: first jobs with dependencies
         Arrays.sort(jobs, (a, b) -> Integer.compare(b.dependencies.length, a.dependencies.length));
 
         //
@@ -334,7 +330,7 @@ public class Scheduler {
 
         // dependencies
         int maxPriority = priority;
-        for (int d : jobs[jobId].dependencies) {
+        for (int d : jobsMap[jobId].dependencies) {
             int p = dfs(d, priority + 1, visitedPriority);
             if (p > maxPriority) {
                 maxPriority = p;
@@ -409,7 +405,7 @@ public class Scheduler {
             Schedule s = new Schedule();
             // idle to fill the gap
             s.priority = priority;
-            s.startTime = endTime;
+            s.startTime = this.endTime;
             s.duration = endTime - this.endTime;
             s.powerUsage = s.duration * powers[0];
             schedules.add(s);
@@ -448,29 +444,4 @@ public class Scheduler {
         }
     }
 
-    /**
-     *
-     */
-    public static class Job {
-
-        final int id;
-        final double ops;
-        final Integer[] dependencies;
-
-        public Job(int id, double ops, Integer[] dependencies) {
-            this.id = id;
-            this.ops = ops;
-            this.dependencies = dependencies;
-        }
-
-        @Override
-        public String toString() {
-            StringBuilder sb = new StringBuilder(10);
-            sb.append(id);
-            if (dependencies.length > 0) {
-                sb.append(Arrays.toString(dependencies));
-            }
-            return sb.toString();
-        }
-    }
 }
